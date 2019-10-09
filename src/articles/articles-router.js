@@ -6,23 +6,28 @@ const ArticlesService = require('./articles-service.js');
 const articlesRouter = express.Router();
 const jsonParser = express.json();
 
+const serializeArticle = article => ({
+  id: article.id,
+  style: article.style,
+  title: xss(article.title),
+  content: xss(article.content),
+  date_published: new Date(article.date_published),
+  author: article.author
+});
+
+
+
 articlesRouter
   .route('/')
   .get((req, res, next) => {
     ArticlesService.getAllArticles( req.app.get('db') )
     .then(articles => { 
-      res.json(articles.map(article => ({
-          id: article.id,
-          title: xss(article.title),
-          style: article.style,
-          content: xss(article.content),
-          date_published: new Date(article.date_published),
-        })))
+      res.json(articles.map(serializeArticle))
     })
     .catch(next)
   })
   .post(jsonParser, (req, res, next) => {
-    const { title, content, style } = req.body;
+    const { title, content, style, author } = req.body;
     const newArticle = { title, content, style };
     for (const [key, value] of Object.entries(newArticle)) {
       if (value == null) {
@@ -31,6 +36,7 @@ articlesRouter
         });
       }
     }
+    newArticle.author = author;
     ArticlesService.insertArticle( req.app.get('db'), newArticle )
     .then(article => {
       res.status(201)
@@ -40,13 +46,14 @@ articlesRouter
         style: article.style,
         title: xss(article.title),
         content: xss(article.content),
-        date_published: new Date(article.date_published)
+        date_published: new Date(article.date_published),
+        author: article.author
       })
     })
     .catch(next)
   });
 
-articlesRouter
+  articlesRouter
   .route('/:article_id')
   .all((req, res, next) => {
     ArticlesService.getById( req.app.get('db'), req.params.article_id )
@@ -54,26 +61,13 @@ articlesRouter
         if (!article) {
           return res.status(404).json({ error: { message: `Article doesn't exist` } });
         }
-        //res.article = article // save the article for the next middleware
-        res.json({
-          id: article.id,
-          title: xss(article.title),
-          style: article.style,
-          content: xss(article.content),
-          date_published: new Date(article.date_published),
-        });
+        res.article = article // save the article for the next middleware
         next() // don't forget to call next so the next middleware happens!
       })
       .catch(next)
   })
   .get((req, res, next) => {
-    res.json({
-      id: article.id,
-      title: xss(article.title),
-      style: article.style,
-      content: xss(article.content),
-      date_published: new Date(article.date_published),
-    });
+    res.json(serializeArticle(res.article));
   })
   .delete((req, res, next) => { 
     ArticlesService.deleteArticle( req.app.get('db'), req.params.article_id )
@@ -82,7 +76,6 @@ articlesRouter
   })
   .patch(jsonParser, (req, res, next) => {
     const { title, content, style } = req.body;
-    console.log('reached patch route');
     const articleToUpdate = { title, content, style };
     const numberOfValues = Object.values(articleToUpdate).filter(Boolean).length;
     
